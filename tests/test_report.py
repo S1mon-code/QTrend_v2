@@ -54,3 +54,21 @@ def test_render_window_report_writes_html(tmp_path):
     html = out.read_text()
     assert "QTrend_v2" in html
     assert "t1" in html
+
+
+def test_render_aggregate_report_writes_html(tmp_path):
+    from qtrend_v2.report import render_aggregate_report
+
+    daily = _daily(60)
+    h1 = _h1(daily)
+    w1 = BiasWindow(start=daily.index[0], end=daily.index[29], note="w1")
+    w2 = BiasWindow(start=daily.index[30], end=daily.index[-1], note="w2")
+    strat = Strategy()
+    r1 = strat.run_window(window=w1, daily=daily, h1=h1)
+    r2 = strat.run_window(window=w2, daily=daily, h1=h1)
+    out = tmp_path / "agg.html"
+    render_aggregate_report(results=[r1, r2], output_path=out)
+    assert out.exists()
+    html = out.read_text()
+    assert "Aggregate" in html
+    assert "w1" in html and "w2" in html

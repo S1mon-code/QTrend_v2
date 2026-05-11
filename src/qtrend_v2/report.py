@@ -133,3 +133,92 @@ def render_window_report(
     )
     output_path.write_text(html)
     return output_path
+
+
+_AGGREGATE_TEMPLATE = Template(
+    """<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>QTrend_v2 — Aggregate</title>
+<style>
+body { font-family: -apple-system, sans-serif; max-width: 1100px; margin: 2em auto; }
+table { border-collapse: collapse; }
+th, td { padding: 4px 8px; border-bottom: 1px solid #ddd; text-align: left; }
+img { display: block; margin: 1em 0; max-width: 100%; }
+</style></head>
+<body>
+<h1>QTrend_v2 — Aggregate report (across {{ n }} windows)</h1>
+<h2>Per-window summary</h2>
+{{ per_window_html | safe }}
+<h2>Aggregate metrics</h2>
+<table>
+<tr><th>Hit rate (% positive)</th><td>{{ hit_rate }}</td></tr>
+<tr><th>Total PnL</th><td>{{ total_pnl }}</td></tr>
+<tr><th>Mean per-window PnL</th><td>{{ mean_pnl }}</td></tr>
+<tr><th>Worst-window drawdown</th><td>{{ worst_dd }}</td></tr>
+<tr><th>Median time-in-market</th><td>{{ median_tim }}</td></tr>
+</table>
+<h2>PnL distribution</h2>
+<img src="data:image/png;base64,{{ chart_pnl_dist }}">
+</body></html>"""
+)
+
+
+def render_aggregate_report(
+    *,
+    results: list[WindowResult],
+    output_path: str | Path,
+) -> Path:
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    rows = []
+    for r in results:
+        eq = r.equity
+        pnl = float(eq.iloc[-1]) if len(eq) else 0.0
+        dd = float((eq - eq.cummax()).min()) if len(eq) else 0.0
+        in_market = r.lot_history[r.lot_history > 0]
+        tim = float(len(in_market) / len(r.lot_history)) if len(r.lot_history) else 0.0
+        rows.append(
+            {
+                "start": r.window.start.date(),
+                "end": r.window.end.date(),
+                "note": r.window.note,
+                "pnl": round(pnl, 2),
+                "max_dd": round(dd, 2),
+                "time_in_market": round(tim, 3),
+                "n_actions": int(r.actions_log.shape[0]),
+            }
+        )
+
+    summary = pd.DataFrame(rows)
+    hit_rate = (summary["pnl"] > 0).mean() if len(summary) else 0.0
+    total_pnl = summary["pnl"].sum() if len(summary) else 0.0
+    mean_pnl = summary["pnl"].mean() if len(summary) else 0.0
+    worst_dd = summary["max_dd"].min() if len(summary) else 0.0
+    median_tim = summary["time_in_market"].median() if len(summary) else 0.0
+
+    fig, ax = plt.subplots(figsize=(8, 3))
+    if len(summary):
+        ax.bar(
+            range(len(summary)),
+            summary["pnl"],
+            color=["green" if p > 0 else "red" for p in summary["pnl"]],
+        )
+        ax.axhline(0, color="black", linewidth=0.5)
+        ax.set_xticks(range(len(summary)))
+        ax.set_xticklabels(summary["note"], rotation=30, ha="right")
+        ax.set_ylabel("PnL")
+        ax.set_title("Per-window PnL")
+    chart_pnl_dist = _fig_to_b64(fig)
+
+    html = _AGGREGATE_TEMPLATE.render(
+        n=len(results),
+        per_window_html=summary.to_html(index=False) if len(summary) else "<p>(no windows)</p>",
+        hit_rate=f"{hit_rate:.1%}",
+        total_pnl=f"{total_pnl:+.2f}",
+        mean_pnl=f"{mean_pnl:+.2f}",
+        worst_dd=f"{worst_dd:+.2f}",
+        median_tim=f"{median_tim:.1%}",
+        chart_pnl_dist=chart_pnl_dist,
+    )
+    output_path.write_text(html)
+    return output_path
