@@ -15,6 +15,10 @@ from qtrend_v2.sizing import Sizer
 from qtrend_v2.state_machine import StateMachine
 from qtrend_v2.types import Action, ActionKind
 
+# ATR fallback used during the warm-up window where Wilder ATR is still NaN.
+# 50.0 ≈ 1.7% of a typical HC price (~3000), a conservative round number.
+_ATR_FALLBACK = 50.0
+
 
 def _wilder_atr(daily: pd.DataFrame, period: int = 20) -> pd.Series:
     high = daily["high"].astype(float)
@@ -98,7 +102,8 @@ def run_window(
             continue
         d_ts = daily_ts[-1]
         current_forecast = float(forecast_full.loc[d_ts])
-        current_atr = float(atr_full.loc[d_ts]) if not np.isnan(atr_full.loc[d_ts]) else 50.0
+        atr_value = atr_full.loc[d_ts]
+        current_atr = float(atr_value) if not np.isnan(atr_value) else _ATR_FALLBACK
 
         natural_target = sizer.update(forecast=current_forecast)
         modulated_target = pullback.adjust(
@@ -109,6 +114,11 @@ def run_window(
 
         close = float(h1_window.loc[ts]["close"])
         rsi2 = float(rsi_h1.loc[ts]) if ts in rsi_h1.index else 50.0
+
+        # Capture lots BEFORE step() — state_machine.step calls _end_round() inside
+        # itself when trailing stop fires, so current_lots is 0 by the time we
+        # inspect it on the FLAT_ALL branch.
+        lots_before = state_machine.current_lots
 
         action = state_machine.step(
             timestamp=ts,
@@ -127,8 +137,10 @@ def run_window(
                     lots=fill.lots,
                     price=fill.price,
                 )
-                signed = fill.lots if fill.kind == ActionKind.BUY else -fill.lots
-                cash -= signed * fill.price
+                if fill.kind == ActionKind.BUY:
+                    cash -= fill.lots * fill.price
+                else:  # SELL
+                    cash += fill.lots * fill.price
                 actions.append(
                     {
                         "ts": fill.timestamp,
@@ -140,9 +152,9 @@ def run_window(
                     }
                 )
         elif action.kind == ActionKind.FLAT_ALL:
-            lots_to_close = state_machine.current_lots
-            if lots_to_close > 0:
-                sell_action = Action(kind=ActionKind.SELL, lots=lots_to_close, reason=action.reason)
+            # Use lots_before because state_machine already cleared its legs.
+            if lots_before > 0:
+                sell_action = Action(kind=ActionKind.SELL, lots=lots_before, reason=action.reason)
                 fill = simulator.execute(action=sell_action, current_ts=ts)
                 if fill is not None:
                     state_machine.record_fill(
