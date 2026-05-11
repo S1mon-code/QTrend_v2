@@ -6,10 +6,12 @@ __pycache__/
 venv/
 .env
 .ipynb_checkpoints/
-data/
+# data/ contents are ignored except for config templates
+data/*
 *.parquet
 *.feather
 *.csv
 !docs/**/*.csv
+!data/bias_windows.csv
 reports/
 logs/
