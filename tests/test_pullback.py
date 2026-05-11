@@ -28,19 +28,23 @@ def test_modulator_trims_when_overbought_and_forecast_high():
     bars = _make_1h_series(closes)
     m = ConnorsPullback(rsi_period=2, overbought=95.0, oversold=10.0)
     final_target = m.adjust(bars, current_forecast=15.0, current_target=4)
-    assert final_target in (3, 4)
+    # Strong overbought sequence must fire the trim — pin behavior precisely.
+    assert m._offset == -1
+    assert final_target == 3
 
 
-def test_modulator_reload_only_undoes_prior_trim():
+def test_modulator_reload_undoes_prior_trim():
     closes_up = [3000 + i for i in range(15)]
     closes_dn = [3014 - i for i in range(15)]
     bars = _make_1h_series(closes_up + closes_dn)
     m = ConnorsPullback()
+    # First call on the rising leg should trim.
     m.adjust(bars.iloc[:15], current_forecast=15.0, current_target=4)
-    m.adjust(bars, current_forecast=15.0, current_target=4)
+    assert m._offset == -1, "rising leg should have triggered trim"
+    # After the declining leg, oversold must reload offset back to 0.
     out = m.adjust(bars, current_forecast=15.0, current_target=4)
-    assert out <= 4
-    assert m._offset in (-1, 0)
+    assert m._offset == 0, "declining leg should have triggered reload"
+    assert out == 4  # reload restores full target
 
 
 def test_modulator_reset_clears_offset():

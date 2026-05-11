@@ -15,14 +15,21 @@ import pandas as pd
 
 
 def _rsi(close: pd.Series, period: int) -> pd.Series:
-    """Wilder-style RSI(period). Returns 50 during warm-up (neutral)."""
+    """Wilder-style RSI(period). Returns 50 during warm-up (neutral).
+
+    When roll_dn = 0 and roll_up > 0 (pure up-streak), RS = +inf and RSI = 100.
+    When both are 0 (no movement), the formula yields NaN which is filled to 50.
+    Do NOT pre-replace zeros with NaN — that suppresses the legitimate RSI=100
+    case and silently breaks trim triggers on monotonic uptrends.
+    """
     delta = close.diff()
     up = delta.clip(lower=0)
     down = -delta.clip(upper=0)
     roll_up = up.ewm(alpha=1.0 / period, adjust=False, min_periods=period).mean()
     roll_dn = down.ewm(alpha=1.0 / period, adjust=False, min_periods=period).mean()
-    rs = roll_up / roll_dn.replace(0, np.nan)
-    rsi = 100 - (100 / (1 + rs))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        rs = roll_up / roll_dn
+        rsi = 100.0 - (100.0 / (1.0 + rs))
     return rsi.fillna(50.0)
 
 
