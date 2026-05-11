@@ -35,6 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from qtrend_v2.backtest import WindowResult
@@ -150,10 +151,66 @@ def to_backtest_result(
     )
 
 
+def _dataframe_to_bararray(df: pd.DataFrame, symbol: str):
+    """Wrap a parquet-style HC bars DataFrame into AlphaForge BarArray.
+
+    Requires the canonical 16-col parquet schema (open/high/low/close + raw + factor +
+    is_rollover + trading_day + origin_symbol). Settlement is optional; falls back to
+    close_raw if absent. Uses strict=False so non-finite tails (cache artefacts) don't
+    fail construction — alphaforge will log warnings for those rows.
+    """
+    from alphaforge.data.bardata import BarArray
+
+    required = {
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "amount",
+        "oi",
+        "trading_day",
+        "open_raw",
+        "high_raw",
+        "low_raw",
+        "close_raw",
+        "origin_symbol",
+        "factor",
+        "is_rollover",
+    }
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"bars DataFrame missing columns for BarArray: {sorted(missing)}")
+
+    dt_arr = np.array(df.index.values, dtype="datetime64[ns]")
+    settlement = df["settlement"].values if "settlement" in df.columns else None
+    return BarArray(
+        datetime_arr=dt_arr,
+        open_arr=df["open"].values,
+        high_arr=df["high"].values,
+        low_arr=df["low"].values,
+        close_arr=df["close"].values,
+        volume_arr=df["volume"].values,
+        amount_arr=df["amount"].values,
+        oi_arr=df["oi"].values,
+        trading_day_arr=df["trading_day"].values,
+        open_raw_arr=df["open_raw"].values,
+        high_raw_arr=df["high_raw"].values,
+        low_raw_arr=df["low_raw"].values,
+        close_raw_arr=df["close_raw"].values,
+        origin_symbol_arr=df["origin_symbol"].values,
+        factor_arr=df["factor"].values,
+        is_rollover_arr=df["is_rollover"].values,
+        settlement_arr=settlement,
+        strict=False,
+    ), symbol
+
+
 def render_alphaforge_report(
     *,
     window_result: WindowResult,
     output_path: str | Path,
+    bars: pd.DataFrame | None = None,
     initial_capital: float = _DEFAULT_INITIAL_CAPITAL,
     spec: InstrumentSpec | None = None,
     freq: str = "daily",
@@ -163,14 +220,40 @@ def render_alphaforge_report(
     Args:
         window_result: Single-window backtest result.
         output_path: Destination .html file.
+        bars: Optional OHLCV DataFrame to drive the K-line chart with entry/exit
+              markers. Schema must match the parquet loaders (open/high/low/close +
+              raw variants + factor + trading_day + origin_symbol + is_rollover).
+              Without this, alphaforge skips the candlestick + trade-markers section
+              (Section 2.5) and the BH benchmark on the equity chart.
+              Slice this to the window span (+ a little warmup) for readability.
         initial_capital: Starting RMB capital (default 1M).
         spec: Instrument spec (default HC: multiplier=10, commission=0.01%).
-        freq: Chart frequency label (default "daily").
+        freq: Chart frequency label ("daily", "1h", "5min", ...).
     """
-    _, HTMLReportGenerator = _require_alphaforge()
+    BacktestResult_cls, HTMLReportGenerator = _require_alphaforge()
     spec = spec or InstrumentSpec.hc()
 
     af_result = to_backtest_result(window_result, initial_capital=initial_capital, spec=spec)
+
+    bar_data = None
+    spec_manager = None
+    if bars is not None and len(bars) > 0:
+        from alphaforge.data.contract_specs import ContractSpecManager
+
+        bar_array, sym = _dataframe_to_bararray(bars, spec.symbol)
+        bar_data = {sym: bar_array}
+        spec_manager = ContractSpecManager()  # bundled specs.yaml; includes HC
+
+        # AlphaForge's K-line trade-marker render does strict-string datetime
+        # matching between trades_df['datetime'] and bars._datetime[i]. Daily
+        # bars are timestamped at midnight; QTrend_v2 trade fills are at 1H
+        # bar timestamps (e.g. 10:00). Without alignment the markers vanish.
+        # When the chart is daily, floor trade timestamps to the trading day.
+        if freq == "daily" and af_result.trades is not None and len(af_result.trades) > 0:
+            af_result.trades = af_result.trades.copy()
+            af_result.trades["datetime"] = pd.to_datetime(
+                af_result.trades["datetime"]
+            ).dt.normalize()
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -178,6 +261,8 @@ def render_alphaforge_report(
     gen.generate(
         result=af_result,
         output_path=str(output_path),
+        bar_data=bar_data,
+        spec_manager=spec_manager,
         freq=freq,
     )
     return output_path
