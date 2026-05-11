@@ -41,7 +41,9 @@ EXCEL_COLUMN_MAP = {
 
 def load_excel_1h(path: Path) -> pd.DataFrame:
     raw = pd.read_excel(path).dropna(subset=["日期"])
-    df = raw.rename(columns=EXCEL_COLUMN_MAP)[["datetime", "open", "high", "low", "close", "volume"]]
+    df = raw.rename(columns=EXCEL_COLUMN_MAP)[
+        ["datetime", "open", "high", "low", "close", "volume"]
+    ]
     df["datetime"] = pd.to_datetime(df["datetime"])
     df = df.set_index("datetime").sort_index()
     # The Wind 1H bars span the SHFE session windows (incl. night session at
@@ -74,8 +76,7 @@ def main() -> None:
         f"{daily_combined.index.min().date()} → {daily_combined.index.max().date()}"
     )
     print(
-        f"1H:    {len(h1_combined)} bars, "
-        f"{h1_combined.index.min()} → {h1_combined.index.max()}"
+        f"1H:    {len(h1_combined)} bars, " f"{h1_combined.index.min()} → {h1_combined.index.max()}"
     )
 
     # Demo window: the entire Excel period. NOTE — this is NOT a real Simon-annotated
