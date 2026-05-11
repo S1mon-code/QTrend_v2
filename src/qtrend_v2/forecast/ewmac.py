@@ -16,8 +16,9 @@ class EWMAC(ForecastSignal):
         raw = EMA(close, fast) - EMA(close, slow)
 
     normalised by an exponentially-weighted estimate of price volatility, then
-    scaled to a long-run absolute value of ~10 and capped at ±20. Long-only:
-    negative values clipped to 0.
+    scaled by a long-run scalar (~4.1 for EWMAC(16,64) per Carver's tables) and
+    clipped long-only into the range [0, cap] (default cap=20). Negative trend
+    signals are dropped to 0 — the engine never goes short.
 
     Defaults: fast=16, slow=64 (Carver's medium-term span).
     """

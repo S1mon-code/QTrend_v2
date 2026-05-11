@@ -50,3 +50,31 @@ def test_strategy_run_window_smoke():
     result = strat.run_window(window=window, daily=daily, h1=h1)
     assert result.window == window
     assert len(result.lot_history) > 0
+
+
+def test_strategy_signal_returns_action_single_bar():
+    """signal() is the advisory single-bar API for live use.
+
+    Caller passes daily + 1H history up to current bar and the broker-known
+    current lot count. Returns an Action describing the next intent.
+    """
+    from qtrend_v2.types import ActionKind
+
+    daily = _daily_uptrend(60)
+    h1 = _h1_from_daily(daily)
+    strat = Strategy()
+    # On a clean uptrend with no current position, signal should be HOLD or BUY.
+    action = strat.signal(daily_bars=daily, h1_bars=h1, current_lots=0)
+    assert action.kind in (ActionKind.HOLD, ActionKind.BUY)
+    # When already at max position, no further BUY should be requested.
+    action_max = strat.signal(daily_bars=daily, h1_bars=h1, current_lots=5)
+    assert action_max.kind in (ActionKind.HOLD, ActionKind.SELL, ActionKind.FLAT_ALL)
+
+
+def test_strategy_signal_rejects_empty_h1():
+    import pytest
+
+    daily = _daily_uptrend(60)
+    strat = Strategy()
+    with pytest.raises(ValueError, match="h1_bars must contain"):
+        strat.signal(daily_bars=daily, h1_bars=daily.iloc[:0], current_lots=0)

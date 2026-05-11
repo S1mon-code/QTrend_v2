@@ -4,12 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING
 
-import pandas as pd  # noqa: F401  (used in type hints in other modules)
-
-if TYPE_CHECKING:
-    pass  # reserved for future type-only imports
+import pandas as pd  # pd.Timestamp is used in Leg/Fill field annotations below
 
 
 class ActionKind(str, Enum):
