@@ -19,7 +19,13 @@ pytest -ra
 ```
 
 ## Status
-v1 in development. Out of scope for v1: live execution, paper trade, quantitative bias proxy, multi-instrument.
+- **v1.0 — shipped 2026-05-11**: 15 tasks, 50 tests, full backtest pipeline (HC daily + 1H, EWMAC forecast → 0-5 lot sizing → Connors pullback → 3×ATR trailing stop), end-to-end smoke on real data.
+- **v1.1 — shipped 2026-05-11**: AlphaForge `HTMLReportGenerator` integration via `src/qtrend_v2/report_af.py` (+ 4 tests → 54 total). Closed the v1 spec deviation where reports were written in-house instead of via alphaforge as §3 originally specified. Reports render institutional-grade: TV-style K-line + entry/exit markers, equity vs. BH benchmark, drawdown, monthly heatmap, rolling Sharpe, trade table.
+- **Current**: 54 tests passing, ruff clean. Real bias-window annotation by Simon remains the bottleneck before backtest output can be treated as meaningful (the 3 rows in `data/bias_windows.csv` are still PLACEHOLDERs).
+
+See [docs/CHANGELOG.md](docs/CHANGELOG.md) for the full version history.
+
+Out of scope (deferred): live execution (CTP/PythonGO), paper trade, quantitative bias proxy, multi-instrument.
 
 ## Reports
 

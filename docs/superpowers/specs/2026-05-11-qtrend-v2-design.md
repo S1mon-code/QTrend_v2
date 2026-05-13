@@ -2,9 +2,15 @@
 
 - **Date**: 2026-05-11
 - **Author**: Simon + Claude (brainstorming session)
-- **Status**: Approved by Simon, pending implementation plan
-- **Repo**: `~/Desktop/QTrend_v2/`
+- **Status**: v1 shipped 2026-05-11; v1.1 (AlphaForge report integration) shipped 2026-05-11. See [docs/CHANGELOG.md](../../CHANGELOG.md) for what changed since this spec was written.
+- **Repo**: `~/Desktop/QTrend_v2/` · [github.com/S1mon-code/QTrend_v2](https://github.com/S1mon-code/QTrend_v2)
 - **Related research**: [`../../research/2026-05-11-indicator-frequency-research.md`](../../research/2026-05-11-indicator-frequency-research.md)
+- **Implementation plan** (executed): [`../plans/2026-05-11-qtrend-v2-implementation.md`](../plans/2026-05-11-qtrend-v2-implementation.md)
+
+> **Note on spec drift**: This document is preserved as the original design intent. Two areas have moved on:
+> 1. §7 (Project layout) — `src/qtrend_v2/report_af.py` was added in v1.1 to bridge to AlphaForge.
+> 2. §3 wording "Data loaders may be reused from `alphaforge.data`" was extended in v1.1 to include report rendering via `alphaforge.report.HTMLReportGenerator`.
+> Detailed decisions are in the CHANGELOG; this spec is not edited beyond this note.
 
 ---
 
